@@ -1,35 +1,3 @@
-// #pragma once
-// #include <Arduino.h>
-// #include "driver/twai.h"
-// #include "Config.h"
-// #include "HalEncoders.h" // 需要引用数据结构
-// #include "HalTactile.h"
-
-// // 定义接收到的外部指令结构体（示例）
-// struct RemoteCommand {
-//     uint8_t cmd_type;
-//     float   value;
-//     bool    is_new;
-// };
-
-// class HalTWAI {
-// public:
-//     HalTWAI();
-//     bool begin();
-    
-//     // 发送所有传感器数据
-//     void sendSensorData(const EncoderData& encData, const TactileData& tacData);
-    
-//     // 检查是否有新消息
-//     bool receiveMonitor(RemoteCommand* outCmd);
-
-// private:
-//     void sendFrame(uint32_t id, const uint8_t* data, uint8_t len);
-//     bool _is_initialized;
-// };
-
-// extern HalTWAI twaiBus;
-
 #pragma once
 #include "Config.h"
 

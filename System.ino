@@ -1,93 +1,3 @@
-// #include <Arduino.h>
-// #include "Config.h"
-// #include "HalEncoders.h"
-// #include "HalTactile.h"
-// #include "SystemTasks.h"
-// #include "Calibration.h"
-
-// void setup() {
-//     // 1. 调试串口
-//     Serial.begin(115200);
-//     delay(1000);
-//     Serial.println("--- System Booting ---");
-
-//     // 2. 硬件初始化
-//     encoders.begin();
-//     Serial.println("Encoders (HSPI) Initialized");
-
-//     tactile.begin();
-//     Serial.println("Tactile (VSPI) Initialized");
-
-//      // 2. 初始化校准模块（读取 Flash）
-//     calibManager.begin();
-
-//     // 3. 启动任务系统
-//     startSystemTasks();
-//     Serial.println("FreeRTOS Tasks Started");
-// }
-
-// // 接收串口指令并调度校准任务
-// void handleSerialCommands() {
-//     if (Serial.available()) {
-//         char cmd = Serial.read();
-        
-//         // --- 收到校准指令 'c' ---
-//         if (cmd == 'c') {
-//             Serial.println("\n[CMD] Calibration Requested...");
-
-//             // 1. 获取快照：读取最新的传感器数据
-//             //    (此时 EncoderTask 还在跑，直接读取内存中的最新值)
-//             EncoderData currentData = encoders.getData(); 
-
-//             Serial.println("[System] Suspending Motor Control for Flash Write...");
-            
-//             // 2. 关键调度：挂起高频控制任务
-//             //    防止 Flash 写操作期间触发中断或上下文切换导致 Crash
-//             if (xEncTask != NULL) {
-//                 vTaskSuspend(xEncTask);
-//             }
-
-//             // 3. 执行耗时操作：写 Flash
-//             //    这可能会阻塞几十毫秒
-//             calibManager.saveCurrentAsZero(currentData.rawAngle);
-
-//             // 4.恢复调度：重启控制任务
-//             if (xEncTask != NULL) {
-//                 vTaskResume(xEncTask);
-//             }
-            
-//             Serial.println("[System] Motor Control Resumed.");
-//         }
-//     }
-// }
-
-
-// void loop() {
-//     // === 系统监控心跳 ===
-//     // 每秒打印一次状态，不阻塞 RTOS
-    
-//     static uint32_t lastCheck = 0;
-//     if (millis() - lastCheck > 1000) {
-//         lastCheck = millis();
-        
-//         // 获取快照进行打印
-//         EncoderData enc = encoders.getData();
-//         TactileData tac = tactile.getData();
-
-//         Serial.printf("[Use: %d%%] Enc[0]:%04d | Tac[0]:0x%02X\n", 
-//                       0, // 占位符，如果需要CPU使用率需额外配置
-//                       enc.rawAngle[0], 
-//                       tac.payload[0]);
-//     }
-
-//     // 主循环作为低优先级后台任务运行
-//     handleSerialCommands();
-    
-
-//     // 必须有延时，释放 IDLE 任务资源
-//     vTaskDelay(pdMS_TO_TICKS(100));
-// }
-
 #include <Arduino.h>
 #include "Config.h"
 #include "HalEncoders.h"
@@ -168,14 +78,14 @@ void loop() {
             Serial.println("Calibrating...");
             vTaskSuspend(xEncTask); // 挂起任务防止冲突
             vTaskSuspend(xCanTask);
-            vTaskSuspend(TacTask);
+            vTaskSuspend(xTacTask);
 
             
             calibManager.saveCurrentAsZero(encoders.getData().rawAngle);
             
             vTaskResume(xCanTask);
             vTaskResume(xEncTask);
-             vTaskSuspend(TacTask);
+             vTaskSuspend(xTacTask);
             Serial.println("Done.");
         }
     }
