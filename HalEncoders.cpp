@@ -138,13 +138,13 @@ void HalEncoders::readAll() {
             // rx_buf[0] 是链尾，rx_buf[count-1] 是链头
             int target_id = global_idx + (count - 1 - i);
             
-            tempDatas.rawAngle[target_id] = val & 0x3FFF;
+            tempDatas.rawAngles[target_id] = val & 0x3FFF;
             tempDatas.errorFlags[target_id] = (val & 0x4000) ? 1 : 0;
 
             // Serial.print("Encoder ");
             // Serial.print(target_id);
             // Serial.print(": ");
-            // Serial.println(tempDatas.rawAngle[target_id]);  
+            // Serial.println(tempDatas.rawAngles[target_id]);  
 
             // 检查校验位 (Bit 15)
             // 计算接收到的数据的校验 (包括数据位和错误标志位)

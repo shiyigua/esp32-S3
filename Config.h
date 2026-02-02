@@ -16,7 +16,8 @@
 // 编码器数据结构
 struct EncoderData
 {
-    uint16_t rawAngle[ENCODER_TOTAL_NUM];         // 角度值 (0-16383)
+    uint16_t rawAngles[ENCODER_TOTAL_NUM];
+    uint16_t finalAngles[ENCODER_TOTAL_NUM];            // 实际角度值 (0-360度)
     uint16_t errorFlags[ENCODER_TOTAL_NUM];       // 错误标志
     bool  parityCheckFlags[ENCODER_TOTAL_NUM]; // 偶校验标志
 };

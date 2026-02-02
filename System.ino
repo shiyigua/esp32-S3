@@ -59,7 +59,7 @@ void handleSerialCommands() {
             if(xCanTask) vTaskSuspend(xCanTask); // 【修复】现在能找到了
 
             EncoderData currentData = encoders.getData();
-            calibManager.saveCurrentAsZero(currentData.rawAngle);
+            calibManager.saveCurrentAsZero(currentData.rawAngles);
             
             if(xEncTask) vTaskResume(xEncTask);
             if(xTacTask) vTaskResume(xTacTask);
@@ -81,11 +81,11 @@ void loop() {
             vTaskSuspend(xTacTask);
 
             
-            calibManager.saveCurrentAsZero(encoders.getData().rawAngle);
+            calibManager.saveCurrentAsZero(encoders.getData().rawAngles);
             
             vTaskResume(xCanTask);
             vTaskResume(xEncTask);
-             vTaskSuspend(xTacTask);
+            vTaskResume(xTacTask);
             Serial.println("Done.");
         }
     }
@@ -121,25 +121,25 @@ void printSystemMonitor() {
 
     // --- 区域 1: 编码器 (AS5047P) ---
     // 按每行 5 个打印，方便查看
-    Serial.println(">>> Encoders (Raw Angle 0~16383)");
+    Serial.println(">>> Encoders (final Angle 0~16383)");
     for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
         // 格式: [ID:数值]
         // %02d 表示2位数字，%05d 表示5位数字对齐
-        Serial.printf("[%02d:%05d] ", i, enc.rawAngle[i]); 
+        Serial.printf("[%02d:%05d] ", i, enc.finalAngles[i]); 
         
         // 每 5 个换行
         if ((i + 1) % 5 == 0) Serial.println();
     }
     Serial.println(); // 补一个换行
 
-    // --- 区域 2: 触觉传感器 (Global Forces) ---
-    // 为了防止串口堵塞，仅打印合力 (Fx, Fy, Fz)。
-    // 只有在调试具体点阵时才建议打印 detailed forces。
-    Serial.println(">>> Tactile Sensors (Global Force: x, y, z)");
+    // // --- 区域 2: 触觉传感器 (Global Forces) ---
+    // // 为了防止串口堵塞，仅打印合力 (Fx, Fy, Fz)。
+    // // 只有在调试具体点阵时才建议打印 detailed forces。
+    // Serial.println(">>> Tactile Sensors (Global Force: x, y, z)");
     
 
 
-    // --- [新增区域] CAN 总线健康看板 ---
+    // //--- [新增区域] CAN 总线健康看板 ---
     // Serial.printf(">>> CAN Bus Status: %s\n", 
     //     status.state == TWAI_STATE_RUNNING ? "RUNNING" : 
     //     status.state == TWAI_STATE_BUS_OFF ? "BUS OFF (Error!)" : "STOPPED");

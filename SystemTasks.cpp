@@ -17,6 +17,7 @@ void Task_Encoders(void* pvParameters) {
 
     for (;;) {
         encoders.readAll();
+        calibManager.calibrateAll(encoders.getData().rawAngles, encoders.getData().finalAngles);
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -53,7 +54,7 @@ void Task_CanBus(void* pvParameters) {
         tac = tactile.getData();
 
         twaiBus.sendEncoderData(enc);
-        twaiBus.sendTactileSummary(tac);
+        // twaiBus.sendTactileSummary(tac);
 
         // Serial.printf("第%d次can发送执行完毕\n",times);
         while (twaiBus.receiveMonitor(&rxCmd)) {
