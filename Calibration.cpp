@@ -112,20 +112,37 @@ void CalibrationManager::saveCurrentAsZero(const uint16_t* currentRawAngles) {
 // [修改重点] 批量转换函数
 // =========================================================
 void CalibrationManager::calibrateAll(const uint16_t* rawInput, uint16_t* calibratedOutput) {
-    if (!rawInput || !calibratedOutput) return;
+    if (rawInput == nullptr || calibratedOutput == nullptr) return;
 
     for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
-        // 1. 再次确保输入数据被掩码 (双重保险)
-        uint16_t raw = rawInput[i] & 0x3FFF; 
-        uint16_t off = offsets[i] & 0x3FFF;
+        // 1. 关键：过滤异常值，只保留有效14位数据
+        uint16_t raw = rawInput[i] & ENCODER_MASK;
+        uint16_t off = offsets[i] & ENCODER_MASK;
 
-        // 2. 核心公式：自动环绕减法
-        // 解释：(raw - off) 在无符号运算下会自动回绕
-        // 例如：10 - 20 = 65526 (-10的补码)
-        // 65526 & 0x3FFF = 16374 (正确的环绕值)
-        calibratedOutput[i] = (raw - off) & 0x3FFF;
+        // 2. 使用位运算实现防溢出环绕减法
+        // 原理：利用无符号整数的二进制补码特性
+        // diff 会自动处理 (raw < off) 的情况，比 if 语句更快
+        uint16_t diff = raw - off;
+        
+        // 3. 再次掩码，确保结果合法
+        calibratedOutput[i] = diff & ENCODER_MASK;
     }
 }
+// void CalibrationManager::calibrateAll(const uint16_t* rawInput, uint16_t* calibratedOutput) {
+//     if (!rawInput || !calibratedOutput) return;
+
+//     for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+//         // 1. 再次确保输入数据被掩码 (双重保险)
+//         uint16_t raw = rawInput[i] & 0x3FFF; 
+//         uint16_t off = offsets[i] & 0x3FFF;
+
+//         // 2. 核心公式：自动环绕减法
+//         // 解释：(raw - off) 在无符号运算下会自动回绕
+//         // 例如：10 - 20 = 65526 (-10的补码)
+//         // 65526 & 0x3FFF = 16374 (正确的环绕值)
+//         calibratedOutput[i] = (raw - off) & 0x3FFF;
+//     }
+// }
 // void CalibrationManager::calibrateAll(const uint16_t* rawInput, uint16_t* calibratedOutput) {
 //     if (rawInput == nullptr || calibratedOutput == nullptr) return;
 

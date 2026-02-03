@@ -12,8 +12,7 @@ public:
     // 构建 SPI 命令帧，包括设置读写位并加入偶校验结果
     uint16_t build_command_frame(uint16_t address, bool is_read);
 
-    // // 偶校验计算
-    // uint8_t parityCheck(uint8_t *entry_data, uint16_t entry_len);
+    
 
     // 执行一次完整的 21 轴读取 (包含 MUX 切换流程)
     // 注意：此函数耗时较长，通常在 Task 中调用
@@ -26,6 +25,9 @@ public:
 
     // 线程安全地获取当前数据副本
     EncoderData getData();
+
+    // 新增：设置校准后的角度数据
+    void setFinalAngles(const uint16_t* angles);
 
 private:
     // 分组定义: 5组, 数量分别为 4,4,4,4,5

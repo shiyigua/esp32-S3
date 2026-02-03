@@ -234,13 +234,23 @@ void HalEncoders::checkAll() {
         global_idx += count;
     }
 
+
+}
+// 新增：设置校准后的角度数据
+void HalEncoders::setFinalAngles(const uint16_t* angles) {
+    if (angles == nullptr) return;
+    
+    if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        memcpy(_data.finalAngles, angles, sizeof(_data.finalAngles));
+        xSemaphoreGive(_mutex);
+    }
+}
+
     // // 更新全局数据 (线程安全)
     // if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     //     memcpy(&_data, &tempDatas, sizeof(EncoderData));
     //     xSemaphoreGive(_mutex);
     // }
-}
-
 EncoderData HalEncoders::getData() {
     EncoderData ret;
     if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {

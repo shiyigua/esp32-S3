@@ -6,8 +6,8 @@
 #include "Config.h"     // 包含 ENCODER_TOTAL_NUM 定义
 
 // 定义分辨率掩码 (AS5047P: 14bit = 0x3FFF)
-#define ENCODER_RESOLUTION_BIT 0x3FFF 
-#define ENCODER_PERIOD        16384
+#define ENCODER_MASK 0x3FFF // 14位掩码
+#define ENCODER_MAX  0x3FFF // 16383
 
 class CalibrationManager {
 public:

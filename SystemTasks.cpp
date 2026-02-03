@@ -15,12 +15,38 @@ void Task_Encoders(void* pvParameters) {
     const TickType_t xFrequency = pdMS_TO_TICKS(3);
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
+    // 临时缓冲区，避免在栈上创建大数组
+    static uint16_t rawInput[ENCODER_TOTAL_NUM];
+    static uint16_t calibratedOutput[ENCODER_TOTAL_NUM];
+
     for (;;) {
+        // 1. 读取所有编码器原始数据
         encoders.readAll();
-        calibManager.calibrateAll(encoders.getData().rawAngles, encoders.getData().finalAngles);
+        
+        // 2. 获取原始数据副本
+        EncoderData encData = encoders.getData();
+        memcpy(rawInput, encData.rawAngles, sizeof(rawInput));
+        
+        // 3. 执行校准计算
+        calibManager.calibrateAll(rawInput, calibratedOutput);
+        
+        // 4. 【关键修复】将校准后的数据写回编码器实例
+        // 需要为HalEncoders添加设置finalAngles的方法
+        encoders.setFinalAngles(calibratedOutput);
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
+// void Task_Encoders(void* pvParameters) {
+//     const TickType_t xFrequency = pdMS_TO_TICKS(3);
+//     TickType_t xLastWakeTime = xTaskGetTickCount();
+
+//     for (;;) {
+//         encoders.readAll();
+//         calibManager.calibrateAll(encoders.getData().rawAngles, encoders.getData().finalAngles);
+//         vTaskDelayUntil(&xLastWakeTime, xFrequency);
+//     }
+// }
 
 // --- 触觉任务 (50Hz) ---
 void Task_Tactile(void* pvParameters) {
