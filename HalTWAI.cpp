@@ -1,3 +1,4 @@
+
 #include "HalTWAI.h"
 #include <cstring>
 
@@ -107,6 +108,40 @@ bool HalTWAI::receiveMonitor(RemoteCommand* outCmd) {
     return false;
 }
 
+// 【新增】发送错误状态帧
+// 格式: [ErrorMask(3B)] [FirstErrIdx] [ErrCode_H] [ErrCode_L] [Reserved(2B)]
+void HalTWAI::sendErrorStatus(const EncoderData& data) {
+    uint8_t buf[8] = {0};
+    
+    // Byte 0-2: 21位错误掩码 (每个bit代表一个编码器)
+    uint32_t errMask = 0;
+    int firstErrIdx = -1;
+    uint16_t firstErrCode = 0;
+    
+    for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+        if (data.errorFlags[i]) {
+            errMask |= (1UL << i);
+            if (firstErrIdx < 0) {
+                firstErrIdx = i;
+                firstErrCode = data.latchedErrors[i];
+            }
+        }
+    }
+    
+    // 如果没有错误，不发送
+    if (errMask == 0) return;
+    
+    buf[0] = errMask & 0xFF;
+    buf[1] = (errMask >> 8) & 0xFF;
+    buf[2] = (errMask >> 16) & 0x1F;
+    buf[3] = (firstErrIdx >= 0) ? firstErrIdx : 0xFF;
+    buf[4] = (firstErrCode >> 8) & 0xFF;
+    buf[5] = firstErrCode & 0xFF;
+    buf[6] = 0;  // Reserved
+    buf[7] = 0;
+    
+    sendFrame(CAN_ID_ERROR_STATUS, buf, 8);
+}
 
 bool HalTWAI::maintain() {
     twai_status_info_t status_info;

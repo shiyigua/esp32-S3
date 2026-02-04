@@ -13,24 +13,63 @@
 #define ENCODER_TOTAL_NUM 21
 #define TACTILE_GROUP_NUM 5
 
-// 编码器数据结构
-struct EncoderData
-{
+
+
+// ===========================================
+// [AS5047P] 错误码定义 (新增)
+// ===========================================
+#define AS5047P_ERR_FRERR    0x0001  // 帧错误
+#define AS5047P_ERR_INVCOMM  0x0002  // 无效命令
+#define AS5047P_ERR_PARERR   0x0004  // 奇偶校验错误
+
+#define ERR_CODE_NONE        0x0000  // 无错误
+#define ERR_CODE_LINK_LOST   0xFFFF  // 物理断连
+#define ERR_CODE_ERRFL_BASE  0x1000  // ERRFL错误基址
+#define ERR_CODE_DIAG_BASE   0x2000  // 诊断错误基址
+
+// ===========================================
+// [System] 状态机定义 (新增)
+// ===========================================
+enum EncoderFSMState {
+    FSM_READ_ANGLE = 0,
+    FSM_READ_ERRFL = 1,
+    FSM_READ_DIAAGC = 2
+};
+// ===========================================
+// [System] 数据结构定义 (扩展)
+// ===========================================
+struct EncoderData {
     uint16_t rawAngles[ENCODER_TOTAL_NUM];
-    uint16_t finalAngles[ENCODER_TOTAL_NUM];            // 实际角度值 (0-360度)
-    uint16_t errorFlags[ENCODER_TOTAL_NUM];       // 错误标志
-    bool  parityCheckFlags[ENCODER_TOTAL_NUM]; // 偶校验标志
+    uint16_t finalAngles[ENCODER_TOTAL_NUM];
+    uint16_t errorFlags[ENCODER_TOTAL_NUM];      // 0=正常, 1=错误
+    uint16_t latchedErrors[ENCODER_TOTAL_NUM];   // 详细错误码
+};
+struct CheckData {
+    uint16_t rawData[ENCODER_TOTAL_NUM]; 
+    uint16_t rawAngles[ENCODER_TOTAL_NUM];
+    uint8_t  errorFlags[ENCODER_TOTAL_NUM];
+    uint8_t  parityCheckFlags[ENCODER_TOTAL_NUM];
+    uint16_t connectionStatus[ENCODER_TOTAL_NUM]; // 0: OK, 0xFFFF: Lost
 };
 
-// 编码器检查数据结构
-struct CheckData
-{
-    uint16_t rawData[ENCODER_TOTAL_NUM];         // 角度值 (0-16383)
-    bool magHigh[ENCODER_TOTAL_NUM]; // 磁场过强标志。<br>1 = 磁铁距离芯片太近或磁性太强。<br>建议增大安装空隙。
-    bool magLow[ENCODER_TOTAL_NUM];  // 磁场过弱标志。<br>1 = 磁铁距离芯片太远或磁性太弱。<br>建议减小安装空隙。
-    bool cof[ENCODER_TOTAL_NUM];     // CORDIC 溢出。<br>1 = 内部计算溢出，通常伴随磁场异常，此时角度数据不可信。
-    uint8_t agc[ENCODER_TOTAL_NUM];      // 自动增益值 (0~255) 。<br>反映芯片为了补偿磁场强度而调节的信号增益：<br>- 0: 磁场极强（增益最小）。<br>- 255: 磁场极弱（增益最大）。<br>- 理想值: 约 128 (通常在 50~200 之间为佳)。
-};
+// // 编码器数据结构
+// struct EncoderData
+// {
+//     uint16_t rawAngles[ENCODER_TOTAL_NUM];
+//     uint16_t finalAngles[ENCODER_TOTAL_NUM];            // 实际角度值 (0-360度)
+//     uint16_t errorFlags[ENCODER_TOTAL_NUM];       // 错误标志
+//     bool  parityCheckFlags[ENCODER_TOTAL_NUM]; // 偶校验标志
+// };
+
+// // 编码器检查数据结构
+// struct CheckData
+// {
+//     uint16_t rawData[ENCODER_TOTAL_NUM];         // 角度值 (0-16383)
+//     bool magHigh[ENCODER_TOTAL_NUM]; // 磁场过强标志。<br>1 = 磁铁距离芯片太近或磁性太强。<br>建议增大安装空隙。
+//     bool magLow[ENCODER_TOTAL_NUM];  // 磁场过弱标志。<br>1 = 磁铁距离芯片太远或磁性太弱。<br>建议减小安装空隙。
+//     bool cof[ENCODER_TOTAL_NUM];     // CORDIC 溢出。<br>1 = 内部计算溢出，通常伴随磁场异常，此时角度数据不可信。
+//     uint8_t agc[ENCODER_TOTAL_NUM];      // 自动增益值 (0~255) 。<br>反映芯片为了补偿磁场强度而调节的信号增益：<br>- 0: 磁场极强（增益最小）。<br>- 255: 磁场极弱（增益最大）。<br>- 理想值: 约 128 (通常在 50~200 之间为佳)。
+// };
 
 
 // --- 触觉传感器数据结构 (根据你的描述修改) ---
@@ -49,9 +88,9 @@ struct TacIndent2015 {
 
 // 单个模组包含的传感器
 struct TacGroup {
-    TacIndent1610 sensor_A; // 1610 #1
-    TacIndent1610 sensor_B; // 1610 #2
-    TacIndent2015 sensor_C; // 2015 #1
+    TacIndent2015 sensor_A; // 2015 #1
+    TacIndent1610 sensor_B; // 1610 #1
+    TacIndent1610 sensor_C; // 1610 #2
 };
 
 // 整个系统的触觉数据快照

@@ -1,5 +1,38 @@
+// #ifndef HAL_TWAI_H
+// #define HAL_TWAI_H
+
+// #include <Arduino.h>
+// #include "driver/twai.h"
+// #include "Config.h"
+
+// // 【新增】错误状态帧ID
+// #define CAN_ID_ERROR_STATUS 0x1F0
+
+// class HalTWAI {
+// public:
+//     // 原有接口 (保持不变)
+//     void begin();
+//     void sendEncoderAngles(const uint16_t* angles);
+//     void sendTactileData(const uint8_t* data, int len);
+//     bool receive(twai_message_t& msg);
+    
+//     // 【新增】发送错误状态
+//     void sendErrorStatus(const EncoderData& data);
+    
+// private:
+//     bool sendFrame(uint32_t id, const uint8_t* data, uint8_t len);
+// };
+
+// extern HalTWAI halTwai;
+
+// #endif
+
+
 #pragma once
 #include "Config.h"
+
+// 【新增】错误状态帧ID
+#define CAN_ID_ERROR_STATUS 0x1F0
 
 class HalTWAI {
 public:
@@ -16,6 +49,7 @@ public:
     // 发送详细触觉数据 (如果需要)
     void sendTactileFullDump(const TactileData& tacData);
     
+    void sendErrorStatus(const EncoderData& data);
     // --- 接收函数声明 ---
     // 注意：统一为带参数版本，与 .cpp 保持一致
     bool receiveMonitor(RemoteCommand* outCmd);
