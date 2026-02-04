@@ -6,173 +6,323 @@
 #include "SystemTasks.h"
 #include "Calibration.h"
 #include "esp_task_wdt.h"
+#include "esp_log.h" // 引入日志头文件
+
+// 声明外部可能用到的句柄，防止编译错误（如果在 .h 中未申明 extern）
+extern TaskHandle_t xEncTask;
+extern TaskHandle_t xTacTask;
+extern TaskHandle_t xCanTask;
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
-    Serial.println("--- System Boot (XSimple AI) ---");
+    // 等待串口稳定，防止启动日志丢失
+    delay(2000); 
+    Serial.println("\n\n--- System Boot (XSimple AI) ---");
 
-      // 【修复】ESP-IDF v5.x 的看门狗初始化方式
+    // --------------------------------------------------------
+    // [看门狗配置] ESP-IDF v5.x
+    // --------------------------------------------------------
     esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = 5000,                    // 超时时间 5000ms (5秒)
-        .idle_core_mask = (1 << 0) | (1 << 1), // 监控两个核心的 IDLE 任务
-        .trigger_panic = true                  // 超时时触发 panic (打印堆栈)
+        .timeout_ms = 5000,                    // 5秒超时
+        .idle_core_mask = (1 << 0) | (1 << 1), // 监控双核空闲任务
+        .trigger_panic = true                  // 超时触发 Panic 重启
     };
     esp_task_wdt_init(&wdt_config);
 
-
-    // 【新增】启用系统日志，打印崩溃时的回溯信息
+    // [日志配置]
     esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_level_set("TWDT", ESP_LOG_ERROR);
 
-    // 1. 硬件初始化
+    // --------------------------------------------------------
+    // [硬件初始化]
+    // --------------------------------------------------------
+    
+    // 1. 编码器
     encoders.begin();
-    Serial.println("Encoders Init");
-    
-    // 触觉初始化 (注意: 确保 HalTactile 内部根据新的结构体分配了内存)
-    tactile.begin(); 
-    Serial.println("Tactile Init");
-    
-    // CAN 初始化
-    if(twaiBus.begin()) {
-        Serial.println("TWAI CAN Init OK");
+    Serial.println("[Init] Encoders... OK");
+
+    // 2. 触觉传感器
+    tactile.begin();
+    Serial.println("[Init] Tactile... OK");
+
+    // 3. CAN 总线
+    if (twaiBus.begin()) {
+        Serial.println("[Init] TWAI CAN... OK");
     } else {
-        Serial.println("TWAI CAN Init FAILED");
+        Serial.println("[Init] TWAI CAN... FAILED");
     }
 
+    // 4. 校准管理器
     calibManager.begin();
+    Serial.println("[Init] Calibration Manager... OK");
 
-    // 2. 启动 RTOS
+    // --------------------------------------------------------
+    // [RTOS 任务启动]
+    // --------------------------------------------------------
     startSystemTasks();
-    Serial.println("Tasks Started");
+    Serial.println("[System] Tasks Started. Main Loop Running.");
+}
+
+// 封装的校准函数
+void performCalibration() {
+    Serial.println("[Cmd] Calibrating started...");
+
+    // 1. 安全挂起任务 (防止 SPI 竞争)
+    // 注意：更优雅的做法是用 Mutex，但在不知道任务内部实现细节前，挂起是最稳妥的粗暴方式
+    if (xEncTask) vTaskSuspend(xEncTask);
+    if (xTacTask) vTaskSuspend(xTacTask);
+    if (xCanTask) vTaskSuspend(xCanTask);
+
+    // 2. 执行读取和校准
+    // 注意：这里调用 getData 会发起一次 SPI 通讯
+    EncoderData currentData = encoders.getData(); 
+    calibManager.saveCurrentAsZero(currentData.rawAngles);
+
+    // 3. 恢复任务
+    if (xCanTask) vTaskResume(xCanTask);
+    if (xTacTask) vTaskResume(xTacTask);
+    if (xEncTask) vTaskResume(xEncTask);
+
+    Serial.println("[Cmd] Calibration Done.");
 }
 
 void handleSerialCommands() {
-    if (Serial.available()) {
+    // 处理所有缓冲区内的字符，不仅是第一个
+    while (Serial.available()) {
         char cmd = Serial.read();
-        if (cmd == 'c') {
-            Serial.println("Calibrating...");
-            
-            // 安全挂起任务
-            if(xEncTask) vTaskSuspend(xEncTask);
-            if(xTacTask) vTaskSuspend(xTacTask);
-            if(xCanTask) vTaskSuspend(xCanTask); // 【修复】现在能找到了
+        
+        // 忽略换行符和回车
+        if (cmd == '\n' || cmd == '\r') continue;
 
-            EncoderData currentData = encoders.getData();
-            calibManager.saveCurrentAsZero(currentData.rawAngles);
-            
-            if(xEncTask) vTaskResume(xEncTask);
-            if(xTacTask) vTaskResume(xTacTask);
-            if(xCanTask) vTaskResume(xCanTask);
-            
-            Serial.println("Done.");
+        if (cmd == 'c' || cmd == 'C') {
+            performCalibration();
         }
     }
 }
 
-void loop() {
-    // 简单的串口命令处理，用于调试校准
-    if (Serial.available()) {
-        char c = Serial.read();
-        if (c == 'c') {
-            Serial.println("Calibrating...");
-            vTaskSuspend(xEncTask); // 挂起任务防止冲突
-            vTaskSuspend(xCanTask);
-            vTaskSuspend(xTacTask);
+// --------------------------------------------------------
+// [系统监控打印]
+// --------------------------------------------------------
+void printSystemMonitor() {
+    // 获取最新数据快照
+    // 注意：getData() 可能会根据 HalEncoders 的实现触发 SPI，
+    // 如果想要纯被动读取，建议 HalEncoders 提供一个 getCachedData() 接口
+    EncoderData enc = encoders.getData(); 
 
-            
-            calibManager.saveCurrentAsZero(encoders.getData().rawAngles);
-            
-            vTaskResume(xCanTask);
-            vTaskResume(xEncTask);
-            vTaskResume(xTacTask);
-            Serial.println("Done.");
-        }
+    // 清屏 (可选)
+    // Serial.print("\033[2J\033[H"); 
+
+    Serial.println("\n======= [ XSimple Monitor ] =======");
+
+    // --- 编码器数据 ---
+    Serial.println(">>> Encoders (Final Angle: 0~16383)");
+    for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+        // [ID:数据] 格式优化
+        Serial.printf("[%02d:%05d] ", i, enc.finalAngles[i]);
+        // 每 5 个换行
+        if ((i + 1) % 5 == 0) Serial.println();
     }
-    vTaskDelay(100);
+    if (ENCODER_TOTAL_NUM % 5 != 0) Serial.println();
 
+    // --- 触觉数据 (如需开启请取消注释) ---
+    /*
+    TactileData tac = tactile.getData();
+    Serial.println(">>> Tactile Sensors");
+    // ... 打印逻辑 ...
+    */
+
+    Serial.println("===================================");
+}
+
+void loop() {
+    // 1. 处理串口指令
+    handleSerialCommands();
+
+    // 2. 定时监控打印 (非阻塞)
     static uint32_t lastPrintTime = 0;
-
-    // 非阻塞式定时打印
     if (millis() - lastPrintTime > 500) {
         lastPrintTime = millis();
         printSystemMonitor();
     }
 
-
-    handleSerialCommands();
+    // 3. 让出 CPU 给低优先级任务 (Idle Task 需要运行以喂看门狗)
     vTaskDelay(pdMS_TO_TICKS(100));
 }
+// #include <Arduino.h>
+// #include "Config.h"
+// #include "HalEncoders.h"
+// #include "HalTactile.h"
+// #include "HalTWAI.h"
+// #include "SystemTasks.h"
+// #include "Calibration.h"
+// #include "esp_task_wdt.h"
 
-// ==========================================
-// [XSimple] 系统状态监视器
-// ==========================================
+// void setup() {
+//     Serial.begin(115200);
+//     delay(1000);
+//     Serial.println("--- System Boot (XSimple AI) ---");
 
-void printSystemMonitor() {
-    // 1. 获取最新数据快照 (线程安全)
-    EncoderData enc = encoders.getData(); 
-    // 注意：如果触觉未连接，请暂时注释掉下面这行，避免读取空指针
-    // TactileData tac = tactile.getData(); 
+//       // 【修复】ESP-IDF v5.x 的看门狗初始化方式
+//     esp_task_wdt_config_t wdt_config = {
+//         .timeout_ms = 5000,                    // 超时时间 5000ms (5秒)
+//         .idle_core_mask = (1 << 0) | (1 << 1), // 监控两个核心的 IDLE 任务
+//         .trigger_panic = true                  // 超时时触发 panic (打印堆栈)
+//     };
+//     esp_task_wdt_init(&wdt_config);
 
-    // 清屏 (部分串口助手支持 ANSI 码，不支持则忽略)
-    // Serial.print("\033[2J\033[H"); 
+
+//     // 【新增】启用系统日志，打印崩溃时的回溯信息
+//     esp_log_level_set("*", ESP_LOG_INFO);
+//     esp_log_level_set("TWDT", ESP_LOG_ERROR);
+
+//     // 1. 硬件初始化
+//     encoders.begin();
+//     Serial.println("Encoders Init");
     
-    Serial.println("\n====================== [ XSimple Monitor ] ======================");
+//     // 触觉初始化 (注意: 确保 HalTactile 内部根据新的结构体分配了内存)
+//     tactile.begin(); 
+//     Serial.println("Tactile Init");
+    
+//     // CAN 初始化
+//     if(twaiBus.begin()) {
+//         Serial.println("TWAI CAN Init OK");
+//     } else {
+//         Serial.println("TWAI CAN Init FAILED");
+//     }
 
-    // --- 区域 1: 编码器 (AS5047P) ---
-    // 按每行 5 个打印，方便查看
-    Serial.println(">>> Encoders (final Angle 0~16383)");
-    for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
-        // 格式: [ID:数值]
-        // %02d 表示2位数字，%05d 表示5位数字对齐
-        Serial.printf("[%02d:%05d] ", i, enc.finalAngles[i]); 
+//     calibManager.begin();
+
+//     // 2. 启动 RTOS
+//     startSystemTasks();
+//     Serial.println("Tasks Started");
+// }
+
+// void handleSerialCommands() {
+//     if (Serial.available()) {
+//         char cmd = Serial.read();
+//         if (cmd == 'c') {
+//             Serial.println("Calibrating...");
+            
+//             // 安全挂起任务
+//             if(xEncTask) vTaskSuspend(xEncTask);
+//             if(xTacTask) vTaskSuspend(xTacTask);
+//             if(xCanTask) vTaskSuspend(xCanTask); // 【修复】现在能找到了
+
+//             EncoderData currentData = encoders.getData();
+//             calibManager.saveCurrentAsZero(currentData.rawAngles);
+            
+//             if(xEncTask) vTaskResume(xEncTask);
+//             if(xTacTask) vTaskResume(xTacTask);
+//             if(xCanTask) vTaskResume(xCanTask);
+            
+//             Serial.println("Done.");
+//         }
+//     }
+// }
+
+// void loop() {
+//     // 简单的串口命令处理，用于调试校准
+//     if (Serial.available()) {
+//         char c = Serial.read();
+//         if (c == 'c') {
+//             Serial.println("Calibrating...");
+//             vTaskSuspend(xEncTask); // 挂起任务防止冲突
+//             vTaskSuspend(xCanTask);
+//             vTaskSuspend(xTacTask);
+
+            
+//             calibManager.saveCurrentAsZero(encoders.getData().rawAngles);
+            
+//             vTaskResume(xCanTask);
+//             vTaskResume(xEncTask);
+//             vTaskResume(xTacTask);
+//             Serial.println("Done.");
+//         }
+//     }
+//     vTaskDelay(100);
+
+//     static uint32_t lastPrintTime = 0;
+
+//     // 非阻塞式定时打印
+//     if (millis() - lastPrintTime > 500) {
+//         lastPrintTime = millis();
+//         printSystemMonitor();
+//     }
+
+
+//     handleSerialCommands();
+//     vTaskDelay(pdMS_TO_TICKS(100));
+// }
+
+// // ==========================================
+// // [XSimple] 系统状态监视器
+// // ==========================================
+
+// void printSystemMonitor() {
+//     // 1. 获取最新数据快照 (线程安全)
+//     EncoderData enc = encoders.getData(); 
+//     // 注意：如果触觉未连接，请暂时注释掉下面这行，避免读取空指针
+//     // TactileData tac = tactile.getData(); 
+
+//     // 清屏 (部分串口助手支持 ANSI 码，不支持则忽略)
+//     // Serial.print("\033[2J\033[H"); 
+    
+//     Serial.println("\n====================== [ XSimple Monitor ] ======================");
+
+//     // --- 区域 1: 编码器 (AS5047P) ---
+//     // 按每行 5 个打印，方便查看
+//     Serial.println(">>> Encoders (final Angle 0~16383)");
+//     for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+//         // 格式: [ID:数值]
+//         // %02d 表示2位数字，%05d 表示5位数字对齐
+//         Serial.printf("[%02d:%05d] ", i, enc.finalAngles[i]); 
         
-        // 每 5 个换行
-        if ((i + 1) % 5 == 0) Serial.println();
-    }
-    Serial.println(); // 补一个换行
+//         // 每 5 个换行
+//         if ((i + 1) % 5 == 0) Serial.println();
+//     }
+//     Serial.println(); // 补一个换行
 
-    // // --- 区域 2: 触觉传感器 (Global Forces) ---
-    // // 为了防止串口堵塞，仅打印合力 (Fx, Fy, Fz)。
-    // // 只有在调试具体点阵时才建议打印 detailed forces。
-    // Serial.println(">>> Tactile Sensors (Global Force: x, y, z)");
+//     // // --- 区域 2: 触觉传感器 (Global Forces) ---
+//     // // 为了防止串口堵塞，仅打印合力 (Fx, Fy, Fz)。
+//     // // 只有在调试具体点阵时才建议打印 detailed forces。
+//     // Serial.println(">>> Tactile Sensors (Global Force: x, y, z)");
     
 
 
-    // //--- [新增区域] CAN 总线健康看板 ---
-    // Serial.printf(">>> CAN Bus Status: %s\n", 
-    //     status.state == TWAI_STATE_RUNNING ? "RUNNING" : 
-    //     status.state == TWAI_STATE_BUS_OFF ? "BUS OFF (Error!)" : "STOPPED");
+//     // //--- [新增区域] CAN 总线健康看板 ---
+//     // Serial.printf(">>> CAN Bus Status: %s\n", 
+//     //     status.state == TWAI_STATE_RUNNING ? "RUNNING" : 
+//     //     status.state == TWAI_STATE_BUS_OFF ? "BUS OFF (Error!)" : "STOPPED");
         
-    // Serial.printf("    Tx Err: %d | Rx Err: %d | Rx Missed: %d\n", 
-    //     status.tx_error_counter, status.rx_error_counter, status.rx_missed_count);
+//     // Serial.printf("    Tx Err: %d | Rx Err: %d | Rx Missed: %d\n", 
+//     //     status.tx_error_counter, status.rx_error_counter, status.rx_missed_count);
     
-    // if(status.state == TWAI_STATE_BUS_OFF) {
-    //     Serial.println("    [ALERT] SYSTEM IN AUTO-RECOVERY MODE");
-    // }
+//     // if(status.state == TWAI_STATE_BUS_OFF) {
+//     //     Serial.println("    [ALERT] SYSTEM IN AUTO-RECOVERY MODE");
+//     // }
 
 
 
-    // 遍历所有组 (假设 Config.h 中定义了 TACTILE_GROUP_NUM)
-    /* 
-    // 【注意】如果触觉部分还有问题，请保持注释状态，先调通编码器
-    for (int g = 0; g < TACTILE_GROUP_NUM; g++) {
-        TacGroup *grp = &tac.groups[g];
-        Serial.printf("--- Group %d ---\n", g);
+//     // 遍历所有组 (假设 Config.h 中定义了 TACTILE_GROUP_NUM)
+//     /* 
+//     // 【注意】如果触觉部分还有问题，请保持注释状态，先调通编码器
+//     for (int g = 0; g < TACTILE_GROUP_NUM; g++) {
+//         TacGroup *grp = &tac.groups[g];
+//         Serial.printf("--- Group %d ---\n", g);
 
-        // 传感器 A (1610)
-        Serial.printf("  [A] F:(%3d, %3d, %3d)\n", 
-            grp->sensor_A.global[0], grp->sensor_A.global[1], grp->sensor_A.global[2]);
+//         // 传感器 A (1610)
+//         Serial.printf("  [A] F:(%3d, %3d, %3d)\n", 
+//             grp->sensor_A.global[0], grp->sensor_A.global[1], grp->sensor_A.global[2]);
 
-        // 传感器 B (1610)
-        Serial.printf("  [B] F:(%3d, %3d, %3d)\n", 
-            grp->sensor_B.global[0], grp->sensor_B.global[1], grp->sensor_B.global[2]);
+//         // 传感器 B (1610)
+//         Serial.printf("  [B] F:(%3d, %3d, %3d)\n", 
+//             grp->sensor_B.global[0], grp->sensor_B.global[1], grp->sensor_B.global[2]);
 
-        // 传感器 C (2015)
-        Serial.printf("  [C] F:(%3d, %3d, %3d)\n", 
-            grp->sensor_C.global[0], grp->sensor_C.global[1], grp->sensor_C.global[2]);
-    }
-    */
+//         // 传感器 C (2015)
+//         Serial.printf("  [C] F:(%3d, %3d, %3d)\n", 
+//             grp->sensor_C.global[0], grp->sensor_C.global[1], grp->sensor_C.global[2]);
+//     }
+//     */
     
-    Serial.println("=================================================================");
-}
+//     Serial.println("=================================================================");
+// }
