@@ -14,6 +14,8 @@ TaskHandle_t xCanTask = NULL;  // 【修复】添加 CAN 任务句柄
 // HalEncoders& encoders = HalEncoders::getInstance();
 CalibrationManager calibrationManager;
 
+    static int times_test;
+
 // 队列
 QueueHandle_t xQueueEncoderData = NULL;
 
@@ -21,32 +23,50 @@ QueueHandle_t xQueueEncoderData = NULL;
 volatile bool g_requestZeroCalibration = false;
 
 // --- 编码器任务 (200Hz) ---
-void Task_Encoders(void *pvParameters) {
-    (void)pvParameters;
+void Task_Encoders(void* pvParameters) {
+    const TickType_t xFrequency = pdMS_TO_TICKS(5); // 200Hz
+    TickType_t xLastWakeTime = xTaskGetTickCount();
     
-    encoders.begin();
-    calibrationManager.begin();
-    
+    // 本地数据缓冲 (使用 EncoderData，不是 EncoderDataPacket)
     EncoderData localData;
     uint16_t calibrated[ENCODER_TOTAL_NUM];
-    
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(5);
+
+    Serial.println("[Task_Encoders] Started!");
 
     for (;;) {
-        // 1. 获取数据 (包含自动错误检测与恢复)
-        encoders.getData(localData);
+        // 1. 读取编码器原始数据
+        EncoderData rawData = encoders.getData();
+        
+        // 复制原始数据到本地结构
+        for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+            localData.rawAngles[i] = rawData.rawAngles[i];
+            localData.errorFlags[i] = rawData.errorFlags[i];
+        }
+
+        //打印测试结果
+        if ((times_test%100)==0)
+        {
+    Serial.println(">>> Encoders (Final Angle: 0~16383)");
+    for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+        // [ID:数据] 格式优化
+        Serial.printf("[%02d:%05d] ", i, localData.rawAngles[i]);
+        // 每 5 个换行
+        if ((i + 1) % 5 == 0) Serial.println();
+    }
+    if (ENCODER_TOTAL_NUM % 5 != 0) Serial.println();
+        }
 
         // 2. 处理归零请求
         if (g_requestZeroCalibration) {
-            calibrationManager.saveCurrentAsZero(localData.rawAngles);
+            calibManager.saveCurrentAsZero(localData.rawAngles);
             g_requestZeroCalibration = false;
+            Serial.println("[Task_Encoders] Zero calibration done.");
         }
 
         // 3. 校准
-        calibrationManager.calibrateAll(localData.rawAngles, calibrated);
+        calibManager.calibrateAll(localData.rawAngles, calibrated);
 
-        // 4. 填充finalAngles
+        // 4. 填充 finalAngles
         for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
             if (localData.errorFlags[i]) {
                 localData.finalAngles[i] = 0xFFFF;  // 错误标记
@@ -55,14 +75,87 @@ void Task_Encoders(void *pvParameters) {
             }
         }
 
-        // 5. 发送到队列
-        if (xQueueEncoderData) {
+        // 5. 发送到队列 【关键修复点】
+        if (xQueueEncoderData != NULL) {
             xQueueOverwrite(xQueueEncoderData, &localData);
+            
+            // 调试打印 (每秒一次，避免刷屏)
+            static uint32_t lastPrint = 0;
+            if (millis() - lastPrint > 1000) {
+                // Serial.println("[Task_Encoders] Queue filled OK.");
+                lastPrint = millis();
+            }
+        } else {
+            // 错误：队列未创建
+            static uint32_t lastErr = 0;
+            if (millis() - lastErr > 2000) {
+                Serial.println("[FATAL] xQueueEncoderData is NULL!");
+                lastErr = millis();
+            }
         }
-
+        times_test++;
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
+
+// void Task_Encoders(void *pvParameters) {
+//     (void)pvParameters;
+//     static int times_test;
+//     encoders.begin();
+//     calibrationManager.begin();
+    
+//     EncoderData localData;
+//     uint16_t calibrated[ENCODER_TOTAL_NUM];
+    
+//     TickType_t xLastWakeTime = xTaskGetTickCount();
+//     const TickType_t xFrequency = pdMS_TO_TICKS(5);
+
+//     for (;;) {
+//         // 1. 获取数据 (包含自动错误检测与恢复)
+//         encoders.getData(localData);
+
+//     //     //打印测试结果
+//     //     if (times_test%100==0)
+//     //     {
+//     // Serial.println(">>> Encoders (Final Angle: 0~16383)");
+//     // for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+//     //     // [ID:数据] 格式优化
+//     //     Serial.printf("[%02d:%05d] ", i, localData.rawAngles[i]);
+//     //     // 每 5 个换行
+//     //     if ((i + 1) % 5 == 0) Serial.println();
+//     // }
+//     // if (ENCODER_TOTAL_NUM % 5 != 0) Serial.println();
+//     //     }
+
+//         // 2. 处理归零请求
+//         if (g_requestZeroCalibration) {
+//             calibrationManager.saveCurrentAsZero(localData.rawAngles);
+//             g_requestZeroCalibration = false;
+//         }
+
+//         // 3. 校准
+//         calibrationManager.calibrateAll(localData.rawAngles, calibrated);
+
+//         // 4. 填充finalAngles
+//         for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+//             if (localData.errorFlags[i]) {
+//                 localData.finalAngles[i] = 0xFFFF;  // 错误标记
+//             } else {
+//                 localData.finalAngles[i] = calibrated[i];
+//                 // Serial.println("\n======= [填充任务执行中] =======");
+//             }
+//         }
+
+//         // 5. 发送到队列
+//         if (xQueueEncoderData) {
+//             xQueueOverwrite(xQueueEncoderData, &localData);
+//             Serial.println("\n======= [队列填充任务执行中] =======");
+//         }
+//         // Serial.println("\n======= [编码器任务执行中] =======");
+
+//         vTaskDelayUntil(&xLastWakeTime, xFrequency);
+//     }
+// }
 // void Task_Encoders(void* pvParameters) {
 //     const TickType_t xFrequency = pdMS_TO_TICKS(3);
 //     TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -76,7 +169,7 @@ void Task_Encoders(void *pvParameters) {
 
 // --- 触觉任务 (50Hz) ---
 void Task_Tactile(void* pvParameters) {
-    const TickType_t xFrequency = pdMS_TO_TICKS(20);
+    const TickType_t xFrequency = pdMS_TO_TICKS(100);
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     for (;;) {
@@ -89,7 +182,7 @@ void Task_Tactile(void* pvParameters) {
 void Task_CanBus(void *pvParameters) {
     (void)pvParameters;
     
-    twaiBus.begin();
+    // twaiBus.begin();
     
     EncoderData txData;
     RemoteCommand cmd{};
@@ -99,12 +192,19 @@ void Task_CanBus(void *pvParameters) {
     const TickType_t xFrequency = pdMS_TO_TICKS(10);
 
     for (;;) {
+
+        // 【新增】1. 维护总线状态 (自恢复、报警)
+        bool isBusOk = twaiBus.maintain();
+
+         if (isBusOk) {
+        // Serial.println("\n======= [发送任务执行中] =======");
         // 1. 从队列获取最新数据
         if (xQueueEncoderData && xQueueReceive(xQueueEncoderData, &txData, 0) == pdTRUE) {
             
             // 2. 发送角度数据 (使用原有打包方式)
             twaiBus.sendEncoderData(txData);
-            
+            // Serial.println("\n======= [编码器数据发送完毕] =======");
+
             // 3. 【新增】每隔5帧检查并发送错误状态
             errorSendCounter++;
             if (errorSendCounter >= 5) {
@@ -121,6 +221,7 @@ void Task_CanBus(void *pvParameters) {
                 
                 if (hasError) {
                     twaiBus.sendErrorStatus(txData);
+
                 }
             }
         }
@@ -135,7 +236,13 @@ void Task_CanBus(void *pvParameters) {
                 }
             }
         }
+        } else {
+        // >>> 总线故障中 <<<
+        // 可以选择在这里闪烁 LED 指示故障
+            vTaskDelay(pdMS_TO_TICKS(50)); // 故障时降低频率，给驱动恢复时间
+        }
 
+        // Serial.println("\n======= [发送任务执行中] =======");
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -167,11 +274,11 @@ void Task_CanBus(void *pvParameters) {
 //             // 处理指令
 //         }
                     
-//         } else {
-//         // >>> 总线故障中 <<<
-//         // 可以选择在这里闪烁 LED 指示故障
-//             vTaskDelay(pdMS_TO_TICKS(50)); // 故障时降低频率，给驱动恢复时间
-//         }
+        // } else {
+        // // >>> 总线故障中 <<<
+        // // 可以选择在这里闪烁 LED 指示故障
+        //     vTaskDelay(pdMS_TO_TICKS(50)); // 故障时降低频率，给驱动恢复时间
+        // }
 //         // times++;
 //         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 //     }
@@ -179,6 +286,13 @@ void Task_CanBus(void *pvParameters) {
 
 // 启动任务
 void startSystemTasks() {
+
+        // 【关键】先创建队列！
+    xQueueEncoderData = xQueueCreate(1, sizeof(EncoderData));
+    if (xQueueEncoderData == NULL) {
+        Serial.println("[FATAL] Queue creation failed!");
+        while(1) vTaskDelay(1000);
+    }
     // 编码器任务 - Core 1, 高优先级
     xTaskCreatePinnedToCore(
         Task_Encoders, "EncTask", 4096, NULL, 10, &xEncTask, 1
@@ -189,7 +303,7 @@ void startSystemTasks() {
         Task_Tactile, "TacTask", 8192, NULL, 5, &xTacTask, 0
     );
 
-    // CAN 任务 - Core 0, 中优先级
+    // CAN 任务 - Core 1, 中优先级
     xTaskCreatePinnedToCore(
         Task_CanBus, "CanTask", 4096, NULL, 5, &xCanTask, 0
     );
