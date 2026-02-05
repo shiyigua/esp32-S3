@@ -94,6 +94,23 @@ void HalTWAI::sendTactileFullDump(const TactileData& tacData) {
     // 占位，按需实现
 }
 
+// 【新增 2023-10】发送校准确认帧
+bool HalTWAI::sendCalibrationAck(bool success) {
+    if (!_is_initialized) return false;
+
+    twai_message_t message;
+    message.identifier = 0x300; // 【定义】P4 监听的反馈 ID (可根据协议修改)
+    message.extd = 0;           // 标准帧
+    message.rtr = 0;
+    message.data_length_code = 1; // 数据长度 1字节
+    
+    // Payload: 0x01 代表完成/成功，0x00 代表失败
+    message.data[0] = success ? 0x01 : 0x00; 
+
+    // 发送消息 (非阻塞模式，超时0ms)
+    return (twai_transmit(&message, 0) == ESP_OK);
+}
+
 bool HalTWAI::receiveMonitor(RemoteCommand* outCmd) {
     if (!_is_initialized) return false;
 

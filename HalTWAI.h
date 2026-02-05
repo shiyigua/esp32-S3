@@ -50,6 +50,11 @@ public:
     void sendTactileFullDump(const TactileData& tacData);
     
     void sendErrorStatus(const EncoderData& data);
+
+    // 【新增 2023-10】发送校准完成信号给 P4
+    // 参数 success: true表示成功，false表示失败
+    bool sendCalibrationAck(bool success); 
+    
     // --- 接收函数声明 ---
     // 注意：统一为带参数版本，与 .cpp 保持一致
     bool receiveMonitor(RemoteCommand* outCmd);

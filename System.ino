@@ -23,7 +23,7 @@ void setup() {
     // [看门狗配置] ESP-IDF v5.x
     // --------------------------------------------------------
     esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = 5000,                    // 5秒超时
+        .timeout_ms = 1000,                    // 10秒超时
         .idle_core_mask = (1 << 0) | (1 << 1), // 监控双核空闲任务
         .trigger_panic = true                  // 超时触发 Panic 重启
     };
@@ -63,42 +63,43 @@ void setup() {
     Serial.println("[System] Tasks Started. Main Loop Running.");
 }
 
-// 封装的校准函数
-void performCalibration() {
-    Serial.println("[Cmd] Calibrating started...");
+//已移至sysmgr任务中
+// // 封装的校准函数
+// void performCalibration() {
+//     Serial.println("[Cmd] Calibrating started...");
 
-    // 1. 安全挂起任务 (防止 SPI 竞争)
-    // 注意：更优雅的做法是用 Mutex，但在不知道任务内部实现细节前，挂起是最稳妥的粗暴方式
-    if (xEncTask) vTaskSuspend(xEncTask);
-    if (xTacTask) vTaskSuspend(xTacTask);
-    if (xCanTask) vTaskSuspend(xCanTask);
+//     // 1. 安全挂起任务 (防止 SPI 竞争)
+//     // 注意：更优雅的做法是用 Mutex，但在不知道任务内部实现细节前，挂起是最稳妥的粗暴方式
+//     if (xEncTask) vTaskSuspend(xEncTask);
+//     if (xTacTask) vTaskSuspend(xTacTask);
+//     if (xCanTask) vTaskSuspend(xCanTask);
 
-    // 2. 执行读取和校准
-    // 注意：这里调用 getData 会发起一次 SPI 通讯
-    EncoderData currentData = encoders.getData(); 
-    calibManager.saveCurrentAsZero(currentData.rawAngles);
+//     // 2. 执行读取和校准
+//     // 注意：这里调用 getData 会发起一次 SPI 通讯
+//     EncoderData currentData = encoders.getData(); 
+//     calibManager.saveCurrentAsZero(currentData.rawAngles);
 
-    // 3. 恢复任务
-    if (xCanTask) vTaskResume(xCanTask);
-    if (xTacTask) vTaskResume(xTacTask);
-    if (xEncTask) vTaskResume(xEncTask);
+//     // 3. 恢复任务
+//     if (xCanTask) vTaskResume(xCanTask);
+//     if (xTacTask) vTaskResume(xTacTask);
+//     if (xEncTask) vTaskResume(xEncTask);
 
-    Serial.println("[Cmd] Calibration Done.");
-}
-
-void handleSerialCommands() {
-    // 处理所有缓冲区内的字符，不仅是第一个
-    while (Serial.available()) {
-        char cmd = Serial.read();
+//     Serial.println("[Cmd] Calibration Done.");
+// }
+// 串口命令处理函数已需要
+// void handleSerialCommands() {
+//     // 处理所有缓冲区内的字符，不仅是第一个
+//     while (Serial.available()) {
+//         char cmd = Serial.read();
         
-        // 忽略换行符和回车
-        if (cmd == '\n' || cmd == '\r') continue;
+//         // 忽略换行符和回车
+//         if (cmd == '\n' || cmd == '\r') continue;
 
-        if (cmd == 'c' || cmd == 'C') {
-            performCalibration();
-        }
-    }
-}
+//         if (cmd == 'c' || cmd == 'C') {
+//             performCalibration();
+//         }
+//     }
+// }
 
 // --------------------------------------------------------
 // [系统监控打印]
@@ -136,7 +137,7 @@ void printSystemMonitor() {
 
 void loop() {
     // 1. 处理串口指令
-    handleSerialCommands();
+    // handleSerialCommands();
 
     // 2. 定时监控打印 (非阻塞)
     static uint32_t lastPrintTime = 0;

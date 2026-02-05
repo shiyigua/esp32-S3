@@ -11,6 +11,9 @@ extern TaskHandle_t xEncTask;
 extern TaskHandle_t xTacTask;
 extern TaskHandle_t xCanTask; 
 
+// [新增] 系统管理任务句柄申明
+extern TaskHandle_t xSysMgrTask; 
+
 // 启动系统任务
 void startSystemTasks();
 

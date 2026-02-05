@@ -13,6 +13,11 @@
 #define ENCODER_TOTAL_NUM 21
 #define TACTILE_GROUP_NUM 5
 
+// ------------------- [新增/修改部分 Start] -------------------
+// [NEW] 用于存放 DIAAGC 寄存器的值 (包含 MAGH/MAGL 和 AGC 增益)
+extern uint16_t g_enc_diag[ENCODER_TOTAL_NUM];
+// ------------------- [新增/修改部分 End] -------------------
+
 
 
 // ===========================================

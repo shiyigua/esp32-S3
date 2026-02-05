@@ -4,11 +4,13 @@
 #include "HalTactile.h"
 #include "HalTWAI.h"
 #include "Calibration.h"
+#include "esp_task_wdt.h" // 引入看门狗
 
 // 任务句柄 (全局)
 TaskHandle_t xEncTask = NULL;
 TaskHandle_t xTacTask = NULL;
 TaskHandle_t xCanTask = NULL;  // 【修复】添加 CAN 任务句柄
+TaskHandle_t xSysMgrTask = NULL; // [新增] 管理任务句柄
 
 // 全局实例
 // HalEncoders& encoders = HalEncoders::getInstance();
@@ -228,14 +230,25 @@ void Task_CanBus(void *pvParameters) {
 
         // 4. 接收处理
         twai_message_t rxMsg;
-        while (twaiBus.receiveMonitor(&cmd)) {
-            // 处理远程命令
-            if (rxMsg.identifier == 0x200 && rxMsg.data_length_code >= 1) {
-                if (rxMsg.data[0] == 0x01) {
-                    g_requestZeroCalibration = true;
+        if (twai_receive(&rxMsg, 0) == ESP_OK) {
+            
+            // 收到校准指令 (ID:0x200, Data:0xCA)
+            if (rxMsg.identifier == 0x200 && rxMsg.data_length_code > 0 && rxMsg.data[0] == 0xCA) {
+                
+                // [关键修改] 不直接执行，而是发送通知给 SysMgr 任务
+                if (xSysMgrTask != NULL) {
+                    xTaskNotifyGive(xSysMgrTask); 
                 }
             }
         }
+        // while (twaiBus.receiveMonitor(&cmd)) {
+        //     // 处理远程命令
+        //     if (rxMsg.identifier == 0x200 && rxMsg.data_length_code >= 1) {
+        //         if (rxMsg.data[0] == 0x01) {
+        //             g_requestZeroCalibration = true;
+        //         }
+        //     }
+        // }
         } else {
         // >>> 总线故障中 <<<
         // 可以选择在这里闪烁 LED 指示故障
@@ -284,6 +297,59 @@ void Task_CanBus(void *pvParameters) {
 //     }
 // }
 
+// --- [新增] 系统管理任务函数 ---
+// 负责处理低频、耗时、全局性的操作（如校准、保存配置等）
+// --- [修正后] 系统管理任务函数 ---
+void Task_SysMgr(void *pvParameters) {
+    // 【修改 1】删除/注释掉这行。
+    // 不要监控一个会长期睡眠的任务，否则只要不发命令，看门狗就会重启系统。
+    // esp_task_wdt_add(NULL); 
+
+    Serial.println("[SysMgr] Manager Task Started (Waiting for CMD)...");
+
+    for (;;) {
+        // 等待信号 (无限期阻塞，此时不消耗 CPU)
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        Serial.println("[SysMgr] Calibration Sequence Started...");
+
+        // ---------------------------------------------------
+        // [关键逻辑调整] 防止 SPI 死锁
+        // ---------------------------------------------------
+        
+        // 1. 先获取数据 (此时 xEncTask 还在运行，确保 SPI 锁能正常获取和释放)
+        // 假设 getData 内部有 SPI 操作，必须在任务运行态下调用
+        EncoderData currentData = encoders.getData(); 
+        
+        // 2. 数据拿到后，再挂起任务 (为了安全的 Flash 写入)
+        if (xEncTask) vTaskSuspend(xEncTask);
+        if (xTacTask) vTaskSuspend(xTacTask);
+        if (xCanTask) vTaskSuspend(xCanTask); 
+        
+        // 3. 喂系统级看门狗 (如果开启了 IDLE 监控，这一步其实主要是为了防止 Flash 操作过长)
+        esp_task_wdt_reset();
+
+        // 4. 执行 NVS 写入 (耗时操作)
+        calibManager.saveCurrentAsZero(currentData.rawAngles);
+        
+        // 5. 再次喂狗
+        esp_task_wdt_reset();
+
+        // 6. 恢复任务
+        if (xCanTask) vTaskResume(xCanTask);
+        if (xTacTask) vTaskResume(xTacTask);
+        if (xEncTask) vTaskResume(xEncTask);
+        
+        Serial.println("[SysMgr] Calibration Done & Saved.");
+
+        // ---------------------------------------------------
+
+        // 7. 发送 CAN 反馈
+        vTaskDelay(pdMS_TO_TICKS(50)); // 给 CAN 任务一点恢复时间
+        twaiBus.sendCalibrationAck(true);
+    }
+}
+
 // 启动任务
 void startSystemTasks() {
 
@@ -306,5 +372,11 @@ void startSystemTasks() {
     // CAN 任务 - Core 1, 中优先级
     xTaskCreatePinnedToCore(
         Task_CanBus, "CanTask", 4096, NULL, 5, &xCanTask, 0
+    );
+
+    // [新增] 创建系统管理任务
+    // 优先级设为 1 (低)，堆栈给多一点 (6144) 因为 NVS 操作耗栈
+    xTaskCreatePinnedToCore(
+        Task_SysMgr,   "SysMgr",   6144,  NULL,  1,  &xSysMgrTask, 1 
     );
 }
