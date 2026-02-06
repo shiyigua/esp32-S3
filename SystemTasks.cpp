@@ -46,7 +46,7 @@ void Task_Encoders(void* pvParameters) {
         }
 
         //打印测试结果
-        if ((times_test%100)==0)
+        if ((times_test%100)==1)
         {
     Serial.println(">>> Encoders (Final Angle: 0~16383)");
     for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
@@ -58,24 +58,24 @@ void Task_Encoders(void* pvParameters) {
     if (ENCODER_TOTAL_NUM % 5 != 0) Serial.println();
         }
 
-        // 2. 处理归零请求
-        if (g_requestZeroCalibration) {
-            calibManager.saveCurrentAsZero(localData.rawAngles);
-            g_requestZeroCalibration = false;
-            Serial.println("[Task_Encoders] Zero calibration done.");
-        }
+        // // 2. 处理归零请求
+        // if (g_requestZeroCalibration) {
+        //     calibManager.saveCurrentAsZero(localData.rawAngles);
+        //     g_requestZeroCalibration = false;
+        //     Serial.println("[Task_Encoders] Zero calibration done.");
+        // }
 
         // 3. 校准
-        calibManager.calibrateAll(localData.rawAngles, calibrated);
+        calibManager.calibrateAll(localData.rawAngles, localData.finalAngles);
 
-        // 4. 填充 finalAngles
-        for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
-            if (localData.errorFlags[i]) {
-                localData.finalAngles[i] = 0xFFFF;  // 错误标记
-            } else {
-                localData.finalAngles[i] = calibrated[i];
-            }
-        }
+        // // 4. 填充 finalAngles
+        // for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+        //     if (localData.errorFlags[i]) {
+        //         localData.finalAngles[i] = 0xFFFF;  // 错误标记
+        //     } else {
+        //         localData.finalAngles[i] = calibrated[i];
+        //     }
+        // }
 
         // 5. 发送到队列 【关键修复点】
         if (xQueueEncoderData != NULL) {
@@ -95,7 +95,7 @@ void Task_Encoders(void* pvParameters) {
                 lastErr = millis();
             }
         }
-        times_test++;
+        // times_test++;
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }

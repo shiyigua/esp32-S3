@@ -170,32 +170,32 @@ bool HalTWAI::maintain() {
 
     // 1. 处理 Bus-Off (总线挂死)
     if (status_info.state == TWAI_STATE_BUS_OFF) {
-        Serial.println("!!! [CAN ALERT] BUS-OFF Detected! Initiating Recovery... !!!");
+        // Serial.println("!!! [CAN ALERT] BUS-OFF Detected! Initiating Recovery... !!!");
         
         // 触发恢复流程 (这需要一定时间，取决于总线活动)
         // 注意：恢复期间不能发送/接收
         if (twai_initiate_recovery() != ESP_OK) {
-            Serial.println("!!! [CAN FAIL] Recovery Initiation Failed");
+            // Serial.println("!!! [CAN FAIL] Recovery Initiation Failed");
         }
         return false;
     }
 
     // 2. 处理 Stopped 状态 (恢复完成后，驱动处于停止状态，需要重新 Start)
     if (status_info.state == TWAI_STATE_STOPPED) {
-        Serial.println(">>> [CAN INFO] Bus Recovered. Restarting Driver...");
+        // Serial.println(">>> [CAN INFO] Bus Recovered. Restarting Driver...");
         
         if (twai_start() == ESP_OK) {
-            Serial.println(">>> [CAN INFO] Driver Restarted Successfully.");
+            // Serial.println(">>> [CAN INFO] Driver Restarted Successfully.");
             // 可以在这里重置某些错误计数
         } else {
-            Serial.println("!!! [CAN FAIL] Driver Start Failed");
+            // Serial.println("!!! [CAN FAIL] Driver Start Failed");
         }
         return false; // 刚启动，本周期暂不处理数据
     }
 
     // 3. 检查接收队列溢出 (Rx Overrun)
     if (status_info.rx_overrun_count > 0) {
-        Serial.printf("[CAN WARN] Rx Buffer Overrun: %d\n", status_info.rx_overrun_count);
+        // Serial.printf("[CAN WARN] Rx Buffer Overrun: %d\n", status_info.rx_overrun_count);
         // 如果溢出严重，可能需要清空接收队列
     }
 

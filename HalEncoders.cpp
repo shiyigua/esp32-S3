@@ -192,7 +192,7 @@ void HalEncoders::getData(EncoderData &outData)
             {
             case AS5047P_REG_ANGLECOM:
                 if (error_bit)
-                {
+                { 
                     outData.errorFlags[id] = 1;
                     _fsmStates[id] = FSM_READ_ERRFL;
                 }
@@ -465,7 +465,7 @@ void HalEncoders::getData(EncoderData &outData)
 //     }
 
 // }
-// // 新增：设置校准后的角度数据
+// 新增：设置校准后的角度数据
 // void HalEncoders::setFinalAngles(const uint16_t* angles) {
 //     if (angles == nullptr) return;
 
@@ -475,11 +475,11 @@ void HalEncoders::getData(EncoderData &outData)
 //     }
 // }
 
-//     // // 更新全局数据 (线程安全)
-//     // if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-//     //     memcpy(&_data, &tempDatas, sizeof(EncoderData));
-//     //     xSemaphoreGive(_mutex);
-//     // }
+    // // 更新全局数据 (线程安全)
+    // if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+    //     memcpy(&_data, &tempDatas, sizeof(EncoderData));
+    //     xSemaphoreGive(_mutex);
+    // }
 // EncoderData HalEncoders::getData() {
 //     EncoderData ret;
 //     if (xSemaphoreTake(_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
