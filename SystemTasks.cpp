@@ -31,14 +31,14 @@ void Task_Encoders(void* pvParameters) {
     
     // 本地数据缓冲 (使用 EncoderData，不是 EncoderDataPacket)
     EncoderData localData;
-    uint16_t calibrated[ENCODER_TOTAL_NUM];
+    // uint16_t calibrated[ENCODER_TOTAL_NUM];
 
     Serial.println("[Task_Encoders] Started!");
 
     for (;;) {
         // 1. 读取编码器原始数据
         EncoderData rawData = encoders.getData();
-        
+        // encoders.getData(localData);
         // 复制原始数据到本地结构
         for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
             localData.rawAngles[i] = rawData.rawAngles[i];
@@ -48,7 +48,7 @@ void Task_Encoders(void* pvParameters) {
         //打印测试结果
         if ((times_test%100)==1)
         {
-    Serial.println(">>> Encoders (Final Angle: 0~16383)");
+    Serial.println(">>> Encoders (raw Angle: 0~16383)");
     for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
         // [ID:数据] 格式优化
         Serial.printf("[%02d:%05d] ", i, localData.rawAngles[i]);
@@ -65,17 +65,15 @@ void Task_Encoders(void* pvParameters) {
         //     Serial.println("[Task_Encoders] Zero calibration done.");
         // }
 
-        // 3. 校准
-        calibManager.calibrateAll(localData.rawAngles, localData.finalAngles);
+        // 3. 校准(校钩子，不校了，直接用原始值)
+        // calibManager.calibrateAll(localData.rawAngles, localData.finalAngles);
 
-        // // 4. 填充 finalAngles
-        // for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
-        //     if (localData.errorFlags[i]) {
-        //         localData.finalAngles[i] = 0xFFFF;  // 错误标记
-        //     } else {
-        //         localData.finalAngles[i] = calibrated[i];
-        //     }
-        // }
+        // 4. 填充rawlAngles
+        for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
+            if (localData.errorFlags[i]) {
+                localData.rawAngles[i] = 0xFFFF;  // 错误标记
+            }
+        }
 
         // 5. 发送到队列 【关键修复点】
         if (xQueueEncoderData != NULL) {
@@ -95,7 +93,7 @@ void Task_Encoders(void* pvParameters) {
                 lastErr = millis();
             }
         }
-        // times_test++;
+        times_test++;
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }

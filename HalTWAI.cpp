@@ -49,7 +49,7 @@ void HalTWAI::sendEncoderData(const EncoderData& encData) {
     // static int times;
     // 发送 21 个 uint16_t 角度值 (分 6 帧)
     for (int i = 0; i < 5; i++) {
-        memcpy(buffer, &encData.finalAngles[idx], 8);
+        memcpy(buffer, &encData.rawAngles[idx], 8);
         sendFrame(0x100 + i, buffer, 8);
         idx += 4;
         // Serial.printf("第%d次can发送执行完毕\n",times);
@@ -57,7 +57,7 @@ void HalTWAI::sendEncoderData(const EncoderData& encData) {
     }
     // 最后一帧 (1 个角度)
     memset(buffer, 0, 8);
-    memcpy(buffer, &encData.finalAngles[idx], 2);
+    memcpy(buffer, &encData.rawAngles[idx], 2);
     sendFrame(0x105, buffer, 8);
 }
 
