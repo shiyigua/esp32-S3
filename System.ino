@@ -119,7 +119,7 @@ void printSystemMonitor() {
     Serial.println(">>> Encoders (Final Angle: 0~16383)");
     for (int i = 0; i < ENCODER_TOTAL_NUM; i++) {
         // [ID:数据] 格式优化
-        Serial.printf("[%02d:%05d] ", i, enc.rawAngles[i]);
+        Serial.printf("[%02d:%05h] ", i, enc.rawAngles[i]);
         // 每 5 个换行
         if ((i + 1) % 5 == 0) Serial.println();
     }
